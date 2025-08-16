@@ -42,10 +42,15 @@ app.post("/chat", async (req, res) => {
     const reply = result.output_text;
     return res.json({ reply });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "OpenAI request failed" });
-  }
-});
+  // Better diagnostics (temporary while we debug)
+  const details = {
+    status: err.status || err.code || null,
+    message: err.message || null,
+    data: err.response?.data || err.error || null
+  };
+  console.error("OpenAI error:", details);   // shows in Render → Logs → Runtime
+  return res.status(500).json({ error: "OpenAI request failed", details });
+}
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Virtual Mum backend listening on ${PORT}`));
