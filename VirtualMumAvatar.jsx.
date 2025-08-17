@@ -1,0 +1,262 @@
+import { useEffect, useRef, useState } from "react";
+
+/**
+ * Virtual Mum — Real‑time Avatar Starter
+ * -------------------------------------------------------------
+ * What this does
+ * - Embeds a Ready Player Me avatar (2D/3D) in an <iframe>
+ * - Lets the user chat via text (and optional microphone)
+ * - Speaks bot replies using browser TTS (swap to ElevenLabs/PlayHT/etc. later)
+ * - Shows a simple chat UI and captions for accessibility
+ *
+ * How to customize fast
+ * 1) Replace AVATAR_URL with your own Ready Player Me share link (frameApi enabled)
+ * 2) Flip USE_PREMIUM_TTS to true and wire the speakWithPremiumTTS() function
+ * 3) Replace generateBotReply() with a call to your chatbot backend
+ * 4) Toggle autoSpeak to choose if replies speak automatically
+ *
+ * Thunkable note
+ * - Drop this page into a simple React app and host it (e.g., Netlify/Pages).
+ * - Use Thunkable WebViewer to point at the hosted URL for mobile apps.
+ */
+
+const AVATAR_URL =
+  "https://demo.readyplayer.me/avatar?frameApi"; // TODO: paste your own RPM avatar URL
+
+const USE_PREMIUM_TTS = false; // set true when you wire a provider that returns timestamps/visemes
+
+export default function VirtualMumAvatar() {
+  const iframeRef = useRef(null);
+  const recognitionRef = useRef(null);
+
+  const [messages, setMessages] = useState([
+    {
+      role: "assistant",
+      text: "Hi! I'm Virtual Mum. Ask me anything about Grade 9 English or study habits.",
+    },
+  ]);
+  const [input, setInput] = useState("");
+  const [listening, setListening] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(true);
+
+  // Ready Player Me frame API boot
+  useEffect(() => {
+    const handleRPMReady = (event) => {
+      // You can listen for RPM messages if you need to drive expressions/animations
+      // console.log("RPM message:", event.data);
+    };
+    window.addEventListener("message", handleRPMReady);
+    return () => window.removeEventListener("message", handleRPMReady);
+  }, []);
+
+  // Basic browser TTS fallback
+  const speakWithBrowser = (text) => {
+    try {
+      if (!window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      // Optional voice tuning
+      utter.rate = 0.95; // a tad slower for clarity
+      utter.pitch = 1.05; // slightly brighter
+      utter.onstart = () => setSpeaking(true);
+      utter.onend = () => setSpeaking(false);
+      window.speechSynthesis.speak(utter);
+    } catch (e) {
+      console.error("TTS error", e);
+    }
+  };
+
+  // TODO: Replace this with your premium TTS provider call (returns audio + visemes)
+  const speakWithPremiumTTS = async (_text) => {
+    // Example placeholder; integrate PlayHT/ElevenLabs/Azure Neural TTS here
+    // Then use viseme timestamps to drive mouth blendshapes on the avatar
+    speakWithBrowser(_text);
+  };
+
+  const speak = async (text) => {
+    if (!text) return;
+    if (USE_PREMIUM_TTS) return speakWithPremiumTTS(text);
+    return speakWithBrowser(text);
+  };
+
+  // Stub: replace with your actual chatbot call
+  const generateBotReply = async (userText) => {
+    // Example: call your backend
+    // const res = await fetch("/api/chat", { method: "POST", body: JSON.stringify({ prompt: userText }) });
+    // const data = await res.json();
+    // return data.reply;
+    
+    // Temporary demo reply
+    const tips = [
+      "Try a 25‑minute study sprint with a 5‑minute break—then check back with me.",
+      "When you quote evidence, embed it smoothly and explain how it proves your point.",
+      "Want a quick Dickens refresher? I can quiz you in 60 seconds.",
+    ];
+    const tip = tips[Math.floor(Math.random() * tips.length)];
+    return `Here’s my take: ${userText ? userText : "Let’s get started!"}  ${tip}`;
+  };
+
+  const sendToAvatar = (payload) => {
+    // If you build expression states, send postMessage to the RPM frame here
+    // e.g., { type: 'emotion', value: 'happy' }
+    iframeRef.current?.contentWindow?.postMessage(payload, "*");
+  };
+
+  const handleSubmit = async (e) => {
+    e?.preventDefault?.();
+    const userText = input.trim();
+    if (!userText) return;
+
+    setMessages((m) => [...m, { role: "user", text: userText }]);
+    setInput("");
+
+    // Avatar: thinking cue (if you build custom animations later)
+    sendToAvatar({ type: "emotion", value: "thinking" });
+
+    const reply = await generateBotReply(userText);
+
+    setMessages((m) => [...m, { role: "assistant", text: reply }]);
+
+    if (autoSpeak) await speak(reply);
+
+    sendToAvatar({ type: "emotion", value: "happy" });
+  };
+
+  // Optional microphone input using Web Speech Recognition (Chrome/Safari)
+  const toggleMic = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return alert("Speech recognition not supported in this browser.");
+
+    if (!recognitionRef.current) {
+      const rec = new SR();
+      rec.lang = "en-US"; // set TR or EN as needed
+      rec.interimResults = true;
+      rec.continuous = false;
+      rec.onresult = (e) => {
+        const transcript = Array.from(e.results)
+          .map((r) => r[0].transcript)
+          .join("");
+        setInput(transcript);
+      };
+      rec.onend = () => setListening(false);
+      recognitionRef.current = rec;
+    }
+
+    if (listening) {
+      recognitionRef.current.stop();
+      setListening(false);
+    } else {
+      setListening(true);
+      recognitionRef.current.start();
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-6 md:p-10">
+      <div className="mx-auto max-w-5xl grid md:grid-cols-2 gap-6">
+        {/* Avatar Panel */}
+        <div className="space-y-4">
+          <div className="rounded-2xl shadow bg-white overflow-hidden">
+            <iframe
+              ref={iframeRef}
+              title="Virtual Mum Avatar"
+              src={AVATAR_URL}
+              allow="camera; microphone; clipboard-write;"
+              className="w-full aspect-[16/10]"
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={toggleMic}
+              className={`px-4 py-2 rounded-2xl shadow border text-sm ${
+                listening ? "bg-emerald-600 text-white" : "bg-white"
+              }`}
+            >
+              {listening ? "Stop Mic" : "Start Mic"}
+            </button>
+
+            <button
+              onClick={() => setAutoSpeak((v) => !v)}
+              className={`px-4 py-2 rounded-2xl shadow border text-sm ${
+                autoSpeak ? "bg-indigo-600 text-white" : "bg-white"
+              }`}
+            >
+              {autoSpeak ? "Speaking On" : "Speaking Off"}
+            </button>
+
+            <span className="text-xs text-slate-600">
+              {speaking ? "Speaking…" : ""}
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            Tip: Replace browser TTS with a provider that returns <em>viseme timestamps</em> for perfect lip‑sync.
+          </p>
+        </div>
+
+        {/* Chat Panel */}
+        <div className="flex flex-col rounded-2xl shadow bg-white overflow-hidden">
+          <div className="p-4 border-b bg-slate-100">
+            <h1 className="text-lg font-semibold">Virtual Mum — Live Chat</h1>
+            <p className="text-sm text-slate-600">
+              Friendly guidance for ages 9–18. Captions shown below.
+            </p>
+          </div>
+
+          <div className="flex-1 p-4 space-y-3 overflow-auto" aria-live="polite">
+            {messages.map((m, i) => (
+              <div key={i} className={`max-w-[85%] ${m.role === "user" ? "ml-auto" : ""}`}>
+                <div
+                  className={`px-3 py-2 rounded-2xl text-sm shadow ${
+                    m.role === "user"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-slate-100 text-slate-900"
+                  }`}
+                >
+                  {m.text}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <form onSubmit={handleSubmit} className="p-3 border-t bg-slate-50 flex gap-2">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Type your question…"
+              className="flex-1 px-4 py-3 rounded-2xl border shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <button
+              type="submit"
+              className="px-5 py-3 rounded-2xl bg-indigo-600 text-white shadow"
+            >
+              Send
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {/* Quick setup instructions */}
+      <div className="mx-auto max-w-5xl mt-8 text-sm text-slate-700 space-y-2">
+        <h2 className="font-semibold">Next steps</h2>
+        <ol className="list-decimal list-inside space-y-1">
+          <li>
+            Create your avatar at <span className="font-mono">readyplayer.me</span> and copy the share link
+            with <span className="italic">frameApi</span> enabled. Replace <span className="font-mono">AVATAR_URL</span> above.
+          </li>
+          <li>
+            Swap the TTS: integrate PlayHT/ElevenLabs/Azure Neural TTS in <span className="font-mono">speakWithPremiumTTS()</span>.
+          </li>
+          <li>
+            Connect your chatbot: replace <span className="font-mono">generateBotReply()</span> with a fetch to your API.
+          </li>
+          <li>
+            For mobile: host this page and load it inside Thunkable’s WebViewer.
+          </li>
+        </ol>
+      </div>
+    </div>
+  );
+}
