@@ -5,22 +5,59 @@ import OpenAI from "openai";
 
 dotenv.config();
 
-// 1) create the app first
+// ------------------------
+// 1) App & middleware
+// ------------------------
 const app = express();
-app.use(cors());
 app.use(express.json());
 
-// 2) constants
+// ✅ CORS: allow Thunkable WebView (often sends no Origin), your frontend on Render, local dev, and StackBlitz
+app.use(
+  cors({
+    origin(origin, cb) {
+      // Many mobile WebViews (incl. Thunkable) send no Origin → allow these
+      if (!origin) return cb(null, true);
+
+      const allowed = [
+        "http://localhost:5173",                 // Vite dev
+        "https://stackblitz.com",                // editor
+        // Add your deployed frontend URL below (replace with yours if different):
+        "https://virtual-mum-frontend.onrender.com",
+      ];
+
+      // Allow any *.stackblitz.io preview hosts
+      let hostOk = false;
+      try {
+        const host = new URL(origin).hostname;
+        hostOk = /\.stackblitz\.io$/i.test(host);
+      } catch (_) {}
+
+      if (allowed.includes(origin) || hostOk) return cb(null, true);
+      return cb(new Error("Not allowed by CORS: " + origin));
+    },
+  })
+);
+
+// ------------------------
+// 2) Constants & OpenAI
+// ------------------------
 const SYSTEM_PROMPT = `You are "Virtual Mum", a warm, encouraging study companion for ages 9–18.
 Keep answers short and clear. Avoid collecting personal data (addresses, phone numbers, school names).
 If a student asks for medical, legal, or emergency help, advise consulting a trusted adult or local services.
 Encourage kindness, growth mindset, and safe internet behavior.`;
 
-// 3) openai client from env
 const apiKey = process.env.OPENAI_API_KEY || "";
 const client = apiKey ? new OpenAI({ apiKey }) : null;
 
-// 4) routes
+// ------------------------
+// 3) Routes
+// ------------------------
+
+// Simple health check (handy for testing)
+app.get("/api/ping", (req, res) => {
+  res.json({ ok: true, hasKey: !!process.env.OPENAI_API_KEY });
+});
+
 app.get("/", (req, res) => {
   res.send("Virtual Mum backend is running. Try GET /health or /app, or POST /chat");
 });
@@ -29,6 +66,7 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, hasKey: !!process.env.OPENAI_API_KEY });
 });
 
+// Demo mini-app (unchanged)
 app.get("/app", (req, res) => {
   res.type("html").send(`<!doctype html>
 <html lang="en"><head>
@@ -86,6 +124,8 @@ sendBtn.addEventListener('click', async () => {
 </body></html>`);
 });
 
+// Core chat route your frontend calls at POST /chat
+// Expects: { message, history? }  → Returns: { reply }
 app.post("/chat", async (req, res) => {
   try {
     const { message, history = [] } = req.body || {};
@@ -117,6 +157,8 @@ app.post("/chat", async (req, res) => {
   }
 });
 
-// 5) start server (Render injects PORT)
+// ------------------------
+// 4) Start server
+// ------------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Virtual Mum backend listening on ${PORT}`));
